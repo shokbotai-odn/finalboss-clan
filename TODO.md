@@ -7,23 +7,30 @@
 
 ## 🔴 In Progress
 
-- [ ] Create GitHub repo (shokbotai/finalboss-clan)
-- [ ] Scaffold RuneLite plugin skeleton
 - [ ] Set up Supabase project
 - [ ] Scaffold Discord bot
+- [ ] Test plugin builds with Gradle
 
 ## 🟡 Up Next
 
-- [ ] Basic FinalBossPlugin.java with panel registration
-- [ ] FinalBossPanel.java showing placeholder UI
-- [ ] ClanRosterService.java listening to clan events
-- [ ] Display clan members in panel (no backend yet)
+- [ ] Create Supabase project and get credentials
+- [ ] Design database schema (users, statuses, drops, sessions)
+- [ ] Create Discord application in Developer Portal
+- [ ] Scaffold Discord bot with discord.js
+- [ ] Implement ApiClient.java in plugin for backend calls
 
 ## 🟢 Completed
 
 - [x] Project documentation (PROJECT.md, TODO.md, DECISIONS.md)
 - [x] Design document saved (DESIGN.html)
 - [x] Directory structure created
+- [x] GitHub repo created (shokbotai-odn/finalboss-clan)
+- [x] RuneLite plugin skeleton
+  - [x] build.gradle with proper Java 11 target
+  - [x] FinalBossPlugin.java (main entry, event handlers)
+  - [x] FinalBossConfig.java (all settings sections)
+  - [x] ClanRosterService.java (clan member access)
+  - [x] FinalBossPanel.java (sidebar UI with member list)
 
 ## 📋 Backlog
 

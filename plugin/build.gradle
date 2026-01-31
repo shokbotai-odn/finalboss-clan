@@ -1,0 +1,65 @@
+/*
+ * FinalBoss Clan - RuneLite Plugin
+ * 
+ * Build configuration for Plugin Hub compliance.
+ * Target: Java 11 bytecode (RuneLite requirement)
+ * Dev: JDK 21 recommended
+ */
+
+plugins {
+    id 'java'
+}
+
+group = 'com.finalboss'
+version = '0.1.0'
+
+repositories {
+    mavenLocal()
+    mavenCentral()
+    // RuneLite repository - required for client API
+    maven { url = 'https://repo.runelite.net' }
+}
+
+dependencies {
+    // RuneLite API - use compileOnly so it's not bundled
+    compileOnly group: 'net.runelite', name: 'client', version: '1.10.44'
+    
+    // Annotations
+    compileOnly 'org.projectlombok:lombok:1.18.30'
+    annotationProcessor 'org.projectlombok:lombok:1.18.30'
+    
+    // Logging (provided by RuneLite)
+    compileOnly 'org.slf4j:slf4j-api:1.7.36'
+    
+    // HTTP client for Supabase API calls
+    implementation 'com.squareup.okhttp3:okhttp:4.12.0'
+    
+    // JSON parsing
+    implementation 'com.google.code.gson:gson:2.10.1'
+    
+    // Testing
+    testImplementation 'junit:junit:4.13.2'
+}
+
+java {
+    toolchain {
+        languageVersion = JavaLanguageVersion.of(21)
+    }
+}
+
+tasks.withType(JavaCompile).configureEach {
+    // CRITICAL: Target Java 11 bytecode for RuneLite compatibility
+    options.release.set(11)
+    options.encoding = 'UTF-8'
+}
+
+jar {
+    manifest {
+        attributes(
+            'Plugin-Version': project.version,
+            'Plugin-Id': 'finalboss-clan',
+            'Plugin-Provider': 'Final Boss Clan',
+            'Plugin-Description': 'Clan roster, status sync, drops, and sessions for Final Boss clan'
+        )
+    }
+}

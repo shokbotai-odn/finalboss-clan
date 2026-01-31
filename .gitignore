@@ -1,0 +1,50 @@
+# Java / Gradle
+plugin/build/
+plugin/.gradle/
+plugin/out/
+*.class
+*.jar
+*.war
+*.nar
+*.ear
+*.zip
+*.tar.gz
+*.rar
+hs_err_pid*
+
+# IntelliJ IDEA
+.idea/
+*.iml
+*.ipr
+*.iws
+out/
+
+# VS Code
+.vscode/
+
+# Node / TypeScript
+node_modules/
+dist/
+bot/dist/
+*.log
+npm-debug.log*
+yarn-debug.log*
+yarn-error.log*
+
+# Environment files (NEVER COMMIT)
+.env
+.env.local
+.env.*.local
+*.env
+
+# Supabase
+backend/.supabase/
+
+# OS files
+.DS_Store
+Thumbs.db
+
+# Secrets (double protection)
+**/secrets/
+*.pem
+*.key
