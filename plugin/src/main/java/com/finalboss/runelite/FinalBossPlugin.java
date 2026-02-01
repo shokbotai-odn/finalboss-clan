@@ -8,6 +8,7 @@
  * - Registers the sidebar panel when RuneLite loads
  * - Listens for game events (clan members joining/leaving, chat messages)
  * - Coordinates between the UI, backend, and Discord
+ * - Tracks drops and logs them to the database
  * 
  * PLUGIN HUB COMPLIANCE:
  * - No automation or gameplay actions
@@ -18,7 +19,9 @@
 
 package com.finalboss.runelite;
 
+import com.finalboss.runelite.services.ApiClient;
 import com.finalboss.runelite.services.ClanRosterService;
+import com.finalboss.runelite.services.VerificationService;
 import com.finalboss.runelite.ui.FinalBossPanel;
 import com.google.inject.Provides;
 import lombok.Getter;
@@ -26,7 +29,7 @@ import lombok.extern.slf4j.Slf4j;
 import net.runelite.api.ChatMessageType;
 import net.runelite.api.Client;
 import net.runelite.api.GameState;
-import net.runelite.api.clan.ClanChannel;
+import net.runelite.api.ItemComposition;
 import net.runelite.api.clan.ClanChannelMember;
 import net.runelite.api.events.ChatMessage;
 import net.runelite.api.events.ClanChannelChanged;
@@ -35,8 +38,10 @@ import net.runelite.api.events.ClanMemberLeft;
 import net.runelite.api.events.GameStateChanged;
 import net.runelite.client.config.ConfigManager;
 import net.runelite.client.eventbus.Subscribe;
+import net.runelite.client.game.ItemManager;
 import net.runelite.client.plugins.Plugin;
 import net.runelite.client.plugins.PluginDescriptor;
+import net.runelite.client.plugins.loottracker.LootReceived;
 import net.runelite.client.ui.ClientToolbar;
 import net.runelite.client.ui.NavigationButton;
 import net.runelite.client.util.ImageUtil;
@@ -69,31 +74,20 @@ public class FinalBossPlugin extends Plugin
 {
     // =========================================================================
     // INJECTED DEPENDENCIES
-    // These are automatically provided by RuneLite's dependency injection
     // =========================================================================
     
-    /**
-     * The OSRS game client - our window into the game world.
-     * Used to read clan channel, player info, etc.
-     */
     @Inject
     private Client client;
     
-    /**
-     * Configuration manager - handles saving/loading user settings.
-     */
     @Inject
     private ConfigManager configManager;
     
-    /**
-     * Client toolbar - the left sidebar where we add our panel button.
-     */
     @Inject
     private ClientToolbar clientToolbar;
     
-    /**
-     * Our plugin configuration - user settings like API endpoints.
-     */
+    @Inject
+    private ItemManager itemManager;
+    
     @Inject
     @Getter
     private FinalBossConfig config;
@@ -102,35 +96,22 @@ public class FinalBossPlugin extends Plugin
     // PLUGIN COMPONENTS
     // =========================================================================
     
-    /**
-     * The sidebar panel that displays clan members, statuses, etc.
-     */
     private FinalBossPanel panel;
-    
-    /**
-     * Navigation button in the sidebar to open/close our panel.
-     */
     private NavigationButton navButton;
     
-    /**
-     * Service that manages the clan roster.
-     */
     @Getter
     private ClanRosterService clanRosterService;
+    
+    @Getter
+    private ApiClient apiClient;
+    
+    @Getter
+    private VerificationService verificationService;
     
     // =========================================================================
     // LIFECYCLE METHODS
     // =========================================================================
     
-    /**
-     * Called when the plugin starts up.
-     * 
-     * WHAT HAPPENS HERE:
-     * 1. Create the sidebar panel
-     * 2. Add our icon to the toolbar
-     * 3. Initialize services
-     * 4. Try to load clan roster if already logged in
-     */
     @Override
     protected void startUp() throws Exception
     {
@@ -138,11 +119,13 @@ public class FinalBossPlugin extends Plugin
         
         // Initialize services
         clanRosterService = new ClanRosterService(client);
+        apiClient = new ApiClient(config);
+        verificationService = new VerificationService(this, config, apiClient);
         
         // Create the panel
         panel = new FinalBossPanel(this);
         
-        // Load icon (will use placeholder if not found)
+        // Load icon
         final BufferedImage icon = loadIcon();
         
         // Create navigation button for sidebar
@@ -165,13 +148,6 @@ public class FinalBossPlugin extends Plugin
         log.info("FinalBoss Clan plugin started successfully");
     }
     
-    /**
-     * Called when the plugin shuts down.
-     * 
-     * WHAT HAPPENS HERE:
-     * - Remove our icon from the toolbar
-     * - Clean up any resources
-     */
     @Override
     protected void shutDown() throws Exception
     {
@@ -180,12 +156,15 @@ public class FinalBossPlugin extends Plugin
         // Remove from toolbar
         clientToolbar.removeNavigation(navButton);
         
+        // Cleanup API client
+        if (apiClient != null)
+        {
+            apiClient.shutdown();
+        }
+        
         log.info("FinalBoss Clan plugin stopped");
     }
     
-    /**
-     * Provides the config to the dependency injection system.
-     */
     @Provides
     FinalBossConfig provideConfig(ConfigManager configManager)
     {
@@ -194,15 +173,8 @@ public class FinalBossPlugin extends Plugin
     
     // =========================================================================
     // EVENT HANDLERS
-    // These methods are called automatically when game events occur
     // =========================================================================
     
-    /**
-     * Called when the game state changes (logging in, hopping worlds, etc.)
-     * 
-     * WHY WE CARE:
-     * When the player logs in, we need to refresh the clan roster.
-     */
     @Subscribe
     public void onGameStateChanged(GameStateChanged event)
     {
@@ -213,18 +185,11 @@ public class FinalBossPlugin extends Plugin
         }
         else if (event.getGameState() == GameState.LOGIN_SCREEN)
         {
-            // Clear roster when logged out
             log.debug("Player logged out, clearing roster");
             updatePanelMembers(Collections.emptyList());
         }
     }
     
-    /**
-     * Called when the clan channel changes (joining/leaving a clan chat).
-     * 
-     * WHY WE CARE:
-     * The clan roster needs to be refreshed when the channel changes.
-     */
     @Subscribe
     public void onClanChannelChanged(ClanChannelChanged event)
     {
@@ -232,12 +197,6 @@ public class FinalBossPlugin extends Plugin
         refreshClanRoster();
     }
     
-    /**
-     * Called when a member joins the clan channel.
-     * 
-     * WHY WE CARE:
-     * We need to add them to our roster display.
-     */
     @Subscribe
     public void onClanMemberJoined(ClanMemberJoined event)
     {
@@ -245,12 +204,6 @@ public class FinalBossPlugin extends Plugin
         refreshClanRoster();
     }
     
-    /**
-     * Called when a member leaves the clan channel.
-     * 
-     * WHY WE CARE:
-     * We need to remove them from our roster display.
-     */
     @Subscribe
     public void onClanMemberLeft(ClanMemberLeft event)
     {
@@ -260,47 +213,81 @@ public class FinalBossPlugin extends Plugin
     
     /**
      * Called when a chat message is received.
-     * 
-     * WHY WE CARE:
-     * - RSN verification codes are typed in clan chat
-     * - Drop messages can be detected here (future feature)
+     * Handles RSN verification via clan chat.
      */
     @Subscribe
     public void onChatMessage(ChatMessage event)
     {
-        // Only care about clan chat for verification
-        if (event.getType() != ChatMessageType.CLAN_CHAT 
-            && event.getType() != ChatMessageType.CLAN_MESSAGE)
+        // Check for verification code in clan chat
+        if (event.getType() == ChatMessageType.CLAN_CHAT 
+            || event.getType() == ChatMessageType.CLAN_MESSAGE)
+        {
+            if (verificationService.onChatMessage(event))
+            {
+                log.info("RSN verification successful!");
+                // Refresh panel to show verified status
+                SwingUtilities.invokeLater(() -> panel.updateAuthStatus(true));
+            }
+        }
+    }
+    
+    /**
+     * Called when loot is received.
+     * Logs notable drops to the backend.
+     */
+    @Subscribe
+    public void onLootReceived(LootReceived event)
+    {
+        // Only log if user has opted in and is authenticated
+        if (!config.logDrops() || !apiClient.isAuthenticated())
         {
             return;
         }
         
-        // TODO: Implement verification code detection
-        // TODO: Implement drop message detection
+        String source = event.getName();
+        int threshold = config.dropThreshold();
+        
+        for (var item : event.getItems())
+        {
+            int itemId = item.getId();
+            int quantity = item.getQuantity();
+            
+            // Get item info and price
+            ItemComposition itemComp = itemManager.getItemComposition(itemId);
+            String itemName = itemComp.getName();
+            int gePrice = itemManager.getItemPrice(itemId);
+            long totalValue = (long) gePrice * quantity;
+            
+            // Check threshold
+            if (totalValue < threshold)
+            {
+                continue;
+            }
+            
+            // Log the drop
+            log.info("Notable drop: {} x{} = {}gp from {}", 
+                itemName, quantity, totalValue, source);
+            
+            apiClient.logDrop(itemId, itemName, quantity, totalValue, source)
+                .thenAccept(success -> {
+                    if (success && config.announceDrops())
+                    {
+                        log.info("Drop logged and announced!");
+                    }
+                });
+        }
     }
     
     // =========================================================================
     // HELPER METHODS
     // =========================================================================
     
-    /**
-     * Refreshes the clan roster from the game client.
-     * 
-     * HOW IT WORKS:
-     * 1. Get the current clan channel from the client
-     * 2. Extract the member list
-     * 3. Update the panel on the Swing thread
-     */
     private void refreshClanRoster()
     {
         List<ClanChannelMember> members = clanRosterService.getMembers();
         updatePanelMembers(members);
     }
     
-    /**
-     * Updates the panel with the new member list.
-     * Must be called on the Swing EDT (Event Dispatch Thread).
-     */
     private void updatePanelMembers(List<ClanChannelMember> members)
     {
         SwingUtilities.invokeLater(() -> {
@@ -311,10 +298,6 @@ public class FinalBossPlugin extends Plugin
         });
     }
     
-    /**
-     * Loads the plugin icon from resources.
-     * Returns a default icon if the custom icon isn't found.
-     */
     private BufferedImage loadIcon()
     {
         try
@@ -324,21 +307,14 @@ public class FinalBossPlugin extends Plugin
         catch (Exception e)
         {
             log.warn("Could not load custom icon, using default");
-            // Return a simple placeholder (will be replaced with actual icon later)
             return new BufferedImage(16, 16, BufferedImage.TYPE_INT_ARGB);
         }
     }
     
     // =========================================================================
     // PUBLIC API
-    // Methods that other components (panel, services) can call
     // =========================================================================
     
-    /**
-     * Gets the local player's name if logged in.
-     * 
-     * @return The player's RSN, or null if not logged in
-     */
     public String getLocalPlayerName()
     {
         if (client.getLocalPlayer() != null)
@@ -348,11 +324,17 @@ public class FinalBossPlugin extends Plugin
         return null;
     }
     
-    /**
-     * Checks if the player is currently logged into the game.
-     */
     public boolean isLoggedIn()
     {
         return client.getGameState() == GameState.LOGGED_IN;
+    }
+    
+    /**
+     * Starts the RSN verification process.
+     * @return The verification code to display to user
+     */
+    public String startVerification()
+    {
+        return verificationService.startVerification();
     }
 }

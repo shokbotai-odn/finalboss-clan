@@ -248,6 +248,27 @@ public class FinalBossPanel extends PluginPanel
         log.debug("Updated member list with {} members", members.size());
     }
     
+    /**
+     * Updates the authentication status display.
+     * 
+     * @param authenticated true if user is verified
+     */
+    public void updateAuthStatus(boolean authenticated)
+    {
+        if (authenticated)
+        {
+            loginButton.setText("✓ Verified");
+            loginButton.setEnabled(false);
+            statusSelector.setEnabled(true);
+        }
+        else
+        {
+            loginButton.setText("Login with Discord");
+            loginButton.setEnabled(true);
+            statusSelector.setEnabled(false);
+        }
+    }
+    
     // =========================================================================
     // PRIVATE METHODS
     // =========================================================================
