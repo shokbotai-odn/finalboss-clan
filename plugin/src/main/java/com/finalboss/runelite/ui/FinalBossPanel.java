@@ -6,19 +6,18 @@
  * It shows:
  * - Your current status selector at the top
  * - List of online clan members with their statuses
- * - Controls for sessions, drops, etc.
+ * - Controls for authentication
  * 
- * SWING BASICS:
- * - JPanel = a container for other components
- * - JLabel = text display
- * - JButton = clickable button
- * - JScrollPane = makes content scrollable
- * - BorderLayout, BoxLayout = ways to arrange components
+ * STATUS SYNC:
+ * - When you change your status, it's sent to the backend
+ * - Other players' statuses are fetched periodically
+ * - Status shows next to each member's name
  */
 
 package com.finalboss.runelite.ui;
 
 import com.finalboss.runelite.FinalBossPlugin;
+import com.finalboss.runelite.model.StatusRecord;
 import lombok.extern.slf4j.Slf4j;
 import net.runelite.api.clan.ClanChannelMember;
 import net.runelite.client.ui.ColorScheme;
@@ -27,26 +26,15 @@ import net.runelite.client.ui.PluginPanel;
 import javax.swing.*;
 import javax.swing.border.EmptyBorder;
 import java.awt.*;
+import java.util.HashMap;
 import java.util.List;
+import java.util.Map;
+import java.util.concurrent.Executors;
+import java.util.concurrent.ScheduledExecutorService;
+import java.util.concurrent.TimeUnit;
 
 /**
  * Main sidebar panel for the FinalBoss Clan plugin.
- * 
- * Layout:
- * ┌────────────────────────┐
- * │ FinalBoss Clan         │ <- Header
- * ├────────────────────────┤
- * │ [Status: Bossing ▼]    │ <- Status selector
- * ├────────────────────────┤
- * │ Online (12)            │ <- Section header
- * │ ┌──────────────────┐   │
- * │ │ Player1 - TOB    │   │ <- Member rows
- * │ │ Player2 - AFK    │   │    (scrollable)
- * │ │ Player3 - Bossing│   │
- * │ └──────────────────┘   │
- * ├────────────────────────┤
- * │ [Login with Discord]   │ <- Auth button (if not logged in)
- * └────────────────────────┘
  */
 @Slf4j
 public class FinalBossPanel extends PluginPanel
@@ -58,45 +46,51 @@ public class FinalBossPanel extends PluginPanel
     private static final Color HEADER_COLOR = new Color(30, 30, 30);
     private static final Color SECTION_COLOR = new Color(40, 40, 40);
     
+    // Status colors for visual distinction
+    private static final Map<String, Color> STATUS_COLORS = Map.of(
+        "Available", new Color(67, 181, 129),    // Green
+        "Bossing", new Color(250, 166, 26),      // Orange
+        "TOB", new Color(237, 66, 69),           // Red
+        "COX", new Color(88, 101, 242),          // Blurple
+        "TOA", new Color(235, 69, 158),          // Pink
+        "Skilling", new Color(87, 242, 135),     // Light green
+        "AFK", new Color(153, 170, 181),         // Gray
+        "Do Not Disturb", new Color(237, 66, 69) // Red
+    );
+    
     // =========================================================================
     // COMPONENTS
     // =========================================================================
     
     private final FinalBossPlugin plugin;
     
-    /** Header showing plugin name */
     private JLabel headerLabel;
-    
-    /** Status dropdown for the local player */
     private JComboBox<String> statusSelector;
-    
-    /** Label showing "Online (X)" */
     private JLabel onlineCountLabel;
-    
-    /** Panel containing member rows */
     private JPanel memberListPanel;
-    
-    /** Login button (shown when not authenticated) */
     private JButton loginButton;
-    
-    /** Panel for auth status */
     private JPanel authPanel;
+    
+    /** Current member list */
+    private List<ClanChannelMember> currentMembers;
+    
+    /** Cached statuses from backend (RSN -> status) */
+    private Map<String, String> memberStatuses = new HashMap<>();
+    
+    /** Scheduler for periodic status refresh */
+    private ScheduledExecutorService statusRefresher;
     
     // =========================================================================
     // CONSTRUCTOR
     // =========================================================================
     
-    /**
-     * Creates the main panel.
-     * 
-     * @param plugin Reference to the main plugin (for accessing config, services)
-     */
     public FinalBossPanel(FinalBossPlugin plugin)
     {
-        super(false); // false = don't wrap in scroll pane (we handle it ourselves)
+        super(false);
         this.plugin = plugin;
         
         buildPanel();
+        startStatusRefresh();
         
         log.debug("FinalBossPanel created");
     }
@@ -105,12 +99,8 @@ public class FinalBossPanel extends PluginPanel
     // PANEL CONSTRUCTION
     // =========================================================================
     
-    /**
-     * Builds the complete panel layout.
-     */
     private void buildPanel()
     {
-        // Use BorderLayout for main structure
         setLayout(new BorderLayout());
         setBackground(ColorScheme.DARK_GRAY_COLOR);
         
@@ -171,6 +161,12 @@ public class FinalBossPanel extends PluginPanel
         onlineCountLabel.setForeground(Color.WHITE);
         sectionHeader.add(onlineCountLabel, BorderLayout.WEST);
         
+        // Refresh button
+        JButton refreshBtn = new JButton("↻");
+        refreshBtn.setToolTipText("Refresh statuses");
+        refreshBtn.addActionListener(e -> refreshStatuses());
+        sectionHeader.add(refreshBtn, BorderLayout.EAST);
+        
         centerPanel.add(sectionHeader, BorderLayout.NORTH);
         
         // Member list (scrollable)
@@ -207,51 +203,23 @@ public class FinalBossPanel extends PluginPanel
     // =========================================================================
     
     /**
-     * Updates the member list display.
-     * 
-     * MUST be called on the Swing EDT (Event Dispatch Thread).
-     * The plugin handles this via SwingUtilities.invokeLater().
-     * 
-     * @param members List of clan members to display
+     * Updates the member list display with statuses.
      */
     public void updateMembers(List<ClanChannelMember> members)
     {
+        this.currentMembers = members;
+        
         // Update count label
         onlineCountLabel.setText("Online (" + members.size() + ")");
         
-        // Clear existing rows
-        memberListPanel.removeAll();
-        
-        if (members.isEmpty())
-        {
-            // Show placeholder when no members
-            JLabel placeholder = new JLabel("No clan members online");
-            placeholder.setForeground(Color.GRAY);
-            placeholder.setBorder(new EmptyBorder(20, 10, 20, 10));
-            placeholder.setAlignmentX(Component.CENTER_ALIGNMENT);
-            memberListPanel.add(placeholder);
-        }
-        else
-        {
-            // Add a row for each member
-            for (ClanChannelMember member : members)
-            {
-                JPanel row = createMemberRow(member);
-                memberListPanel.add(row);
-            }
-        }
-        
-        // Refresh the display
-        memberListPanel.revalidate();
-        memberListPanel.repaint();
+        // Rebuild member list
+        rebuildMemberList();
         
         log.debug("Updated member list with {} members", members.size());
     }
     
     /**
      * Updates the authentication status display.
-     * 
-     * @param authenticated true if user is verified
      */
     public void updateAuthStatus(boolean authenticated)
     {
@@ -269,15 +237,94 @@ public class FinalBossPanel extends PluginPanel
         }
     }
     
+    /**
+     * Cleans up resources when panel is destroyed.
+     */
+    public void shutdown()
+    {
+        if (statusRefresher != null)
+        {
+            statusRefresher.shutdown();
+        }
+    }
+    
     // =========================================================================
     // PRIVATE METHODS
     // =========================================================================
     
     /**
-     * Creates a row component for a single clan member.
-     * 
-     * @param member The clan member to display
-     * @return A JPanel containing the member info
+     * Starts periodic status refresh from backend.
+     */
+    private void startStatusRefresh()
+    {
+        statusRefresher = Executors.newSingleThreadScheduledExecutor();
+        statusRefresher.scheduleAtFixedRate(
+            this::refreshStatuses,
+            5,  // Initial delay
+            30, // Refresh every 30 seconds
+            TimeUnit.SECONDS
+        );
+    }
+    
+    /**
+     * Fetches latest statuses from backend.
+     */
+    private void refreshStatuses()
+    {
+        plugin.getApiClient().getStatuses()
+            .thenAccept(statuses -> {
+                // Build RSN -> status map
+                Map<String, String> newStatuses = new HashMap<>();
+                for (StatusRecord record : statuses)
+                {
+                    if (!record.isExpired())
+                    {
+                        newStatuses.put(record.getRsn().toLowerCase(), record.getStatus());
+                    }
+                }
+                
+                // Update on EDT
+                SwingUtilities.invokeLater(() -> {
+                    memberStatuses = newStatuses;
+                    rebuildMemberList();
+                });
+            })
+            .exceptionally(e -> {
+                log.debug("Failed to refresh statuses: {}", e.getMessage());
+                return null;
+            });
+    }
+    
+    /**
+     * Rebuilds the member list with current statuses.
+     */
+    private void rebuildMemberList()
+    {
+        memberListPanel.removeAll();
+        
+        if (currentMembers == null || currentMembers.isEmpty())
+        {
+            JLabel placeholder = new JLabel("No clan members online");
+            placeholder.setForeground(Color.GRAY);
+            placeholder.setBorder(new EmptyBorder(20, 10, 20, 10));
+            placeholder.setAlignmentX(Component.CENTER_ALIGNMENT);
+            memberListPanel.add(placeholder);
+        }
+        else
+        {
+            for (ClanChannelMember member : currentMembers)
+            {
+                JPanel row = createMemberRow(member);
+                memberListPanel.add(row);
+            }
+        }
+        
+        memberListPanel.revalidate();
+        memberListPanel.repaint();
+    }
+    
+    /**
+     * Creates a row for a single clan member with status.
      */
     private JPanel createMemberRow(ClanChannelMember member)
     {
@@ -291,12 +338,26 @@ public class FinalBossPanel extends PluginPanel
         nameLabel.setForeground(Color.WHITE);
         row.add(nameLabel, BorderLayout.WEST);
         
-        // Status chip (placeholder - will be populated from backend later)
-        JLabel statusLabel = new JLabel("•");
-        statusLabel.setForeground(Color.GRAY);
+        // Status chip
+        String status = memberStatuses.get(member.getName().toLowerCase());
+        JLabel statusLabel;
+        
+        if (status != null)
+        {
+            statusLabel = new JLabel(status);
+            Color statusColor = STATUS_COLORS.getOrDefault(status, Color.GRAY);
+            statusLabel.setForeground(statusColor);
+            statusLabel.setFont(statusLabel.getFont().deriveFont(Font.BOLD, 11f));
+        }
+        else
+        {
+            statusLabel = new JLabel("•");
+            statusLabel.setForeground(Color.DARK_GRAY);
+        }
+        
         row.add(statusLabel, BorderLayout.EAST);
         
-        // Add some spacing between rows
+        // Wrapper for spacing
         JPanel wrapper = new JPanel(new BorderLayout());
         wrapper.setBackground(ColorScheme.DARK_GRAY_COLOR);
         wrapper.add(row, BorderLayout.CENTER);
@@ -311,9 +372,23 @@ public class FinalBossPanel extends PluginPanel
     private void onStatusChanged()
     {
         String selectedStatus = (String) statusSelector.getSelectedItem();
+        if (selectedStatus == null) return;
+        
         log.debug("Status changed to: {}", selectedStatus);
         
-        // TODO: Send status update to backend
+        // Send to backend
+        int timeout = plugin.getConfig().statusTimeout();
+        plugin.getApiClient().setStatus(selectedStatus, null, timeout)
+            .thenAccept(success -> {
+                if (success)
+                {
+                    log.info("Status updated to: {}", selectedStatus);
+                }
+                else
+                {
+                    log.warn("Failed to update status");
+                }
+            });
     }
     
     /**
@@ -323,12 +398,36 @@ public class FinalBossPanel extends PluginPanel
     {
         log.debug("Login button clicked");
         
-        // TODO: Open Discord OAuth2 flow
+        // Get the OAuth URL and open in browser
+        String loginUrl = plugin.getApiClient().getDiscordLoginUrl();
+        
+        // Show verification instructions
+        String code = plugin.startVerification();
+        
         JOptionPane.showMessageDialog(
             this,
-            "Discord login coming soon!\n\nThis will open your browser to authenticate with Discord.",
+            "1. Click OK to open Discord login\n" +
+            "2. Authorize the app\n" +
+            "3. Type this code in clan chat: " + code + "\n\n" +
+            "This verifies your RSN.",
             "Login with Discord",
             JOptionPane.INFORMATION_MESSAGE
         );
+        
+        // Open browser
+        try
+        {
+            Desktop.getDesktop().browse(java.net.URI.create(loginUrl));
+        }
+        catch (Exception e)
+        {
+            log.error("Failed to open browser", e);
+            JOptionPane.showMessageDialog(
+                this,
+                "Could not open browser.\nPlease go to: " + loginUrl,
+                "Error",
+                JOptionPane.ERROR_MESSAGE
+            );
+        }
     }
 }
