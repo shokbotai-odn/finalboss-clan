@@ -7,9 +7,10 @@
 
 ## 🔴 In Progress
 
-- [ ] Set up Supabase project
+- [ ] Test Discord OAuth2 flow
 - [ ] Scaffold Discord bot
 - [ ] Test plugin builds with Gradle
+- [ ] Wire up plugin login button to OAuth flow
 
 ## 🟡 Up Next
 
@@ -31,6 +32,11 @@
   - [x] FinalBossConfig.java (all settings sections)
   - [x] ClanRosterService.java (clan member access)
   - [x] FinalBossPanel.java (sidebar UI with member list)
+- [x] Supabase project created + database schema deployed
+- [x] ApiClient.java for Supabase HTTP calls
+- [x] StatusRecord.java and DropRecord.java models
+- [x] Discord application created
+- [x] Discord OAuth2 configured in Supabase
 
 ## 📋 Backlog
 
