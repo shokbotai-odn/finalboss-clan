@@ -24,7 +24,7 @@ repositories {
 }
 
 def runeLiteVersion = 'latest.release'
-def pluginMainClass = 'com.finalboss.runelite.FinalBossPluginTest'
+def pluginMainClass = 'com.finalboss.runelite.FinalBossPlugin'
 
 dependencies {
     // RuneLite core - provided at runtime
