@@ -1,16 +1,3 @@
-/*
- * FinalBoss Clan - Clan Roster Service
- * 
- * WHAT THIS DOES (for non-coders):
- * This service is responsible for getting the list of clan members from the game.
- * It's like a middleman between the game's clan system and our plugin's UI.
- * 
- * HOW OSRS CLAN SYSTEM WORKS:
- * - Players join a "Clan Channel" (the online roster)
- * - The channel contains ClanChannelMember objects
- * - We can read this data but NOT modify it (read-only)
- */
-
 package com.finalboss.runelite.services;
 
 import lombok.extern.slf4j.Slf4j;
@@ -23,85 +10,87 @@ import java.util.Collections;
 import java.util.List;
 
 /**
- * Service for managing the clan roster.
- * 
- * Provides a clean interface to access clan member data from the game client.
- * All methods are safe to call even when not logged in or not in a clan.
+ * Service for accessing the current clan channel roster.
+ *
+ * This is a thin wrapper around RuneLite's Client API that provides:
+ * - Access to online clan members in the current clan channel
+ * - Clan channel state checks (is player in a clan?)
+ * - Clan name retrieval
+ *
+ * Note: This service only sees players who are ONLINE and in the same
+ * clan chat channel. It does not provide access to the full clan member
+ * list or offline members. For full membership, use the Wise Old Man API.
+ *
+ * The clan channel is the in-game "Clan Chat" feature, not to be confused
+ * with the newer "Clan" system (which this service does not currently use).
  */
 @Slf4j
 public class ClanRosterService
 {
+    // RuneLite game client for clan channel access
     private final Client client;
-    
-    /**
-     * Creates a new ClanRosterService.
-     * 
-     * @param client The RuneLite game client
-     */
+
     public ClanRosterService(Client client)
     {
         this.client = client;
     }
-    
+
+    // ========== Member Access ==========
+
     /**
-     * Gets the current list of clan members.
-     * 
-     * HOW IT WORKS:
-     * 1. Get the clan channel from the client
-     * 2. If no channel, return empty list
-     * 3. Otherwise, return a copy of the member list
-     * 
-     * THREAD SAFETY:
-     * Returns a new ArrayList, so the caller can modify it safely.
-     * 
-     * @return List of clan members (empty if not in a clan)
+     * Get all online members in the current clan channel.
+     * Returns a defensive copy to prevent modification of internal state.
+     *
+     * @return List of clan channel members, or empty list if not in a clan
      */
     public List<ClanChannelMember> getMembers()
     {
         ClanChannel channel = client.getClanChannel();
-        
+
         if (channel == null)
         {
             log.debug("No clan channel available");
             return Collections.emptyList();
         }
-        
+
         List<ClanChannelMember> members = channel.getMembers();
-        
+
         if (members == null)
         {
             log.debug("Clan channel has no members");
             return Collections.emptyList();
         }
-        
-        // Return a copy so callers can't accidentally modify the original
+
+        // Return a copy to avoid external modification
         return new ArrayList<>(members);
     }
-    
+
     /**
-     * Gets the number of online clan members.
-     * 
-     * @return Number of members in the clan channel
+     * Get the count of online members in the clan channel.
+     *
+     * @return Number of online clan members
      */
     public int getMemberCount()
     {
         return getMembers().size();
     }
-    
+
+    // ========== State Checks ==========
+
     /**
-     * Checks if the player is currently in a clan channel.
-     * 
+     * Check if the player is currently in a clan channel.
+     *
      * @return true if in a clan channel, false otherwise
      */
     public boolean isInClan()
     {
         return client.getClanChannel() != null;
     }
-    
+
     /**
-     * Gets the clan name if available.
-     * 
-     * @return The clan name, or null if not in a clan
+     * Get the name of the current clan channel.
+     *
+     * @return Clan name, or null if not in a clan
      */
     public String getClanName()
     {
@@ -111,32 +100,5 @@ public class ClanRosterService
             return null;
         }
         return channel.getName();
-    }
-    
-    /**
-     * Finds a member by their RSN (RuneScape Name).
-     * 
-     * @param rsn The player's name to search for
-     * @return The ClanChannelMember if found, null otherwise
-     */
-    public ClanChannelMember findMember(String rsn)
-    {
-        if (rsn == null || rsn.isEmpty())
-        {
-            return null;
-        }
-        
-        // RSN comparison is case-insensitive
-        String searchName = rsn.toLowerCase();
-        
-        for (ClanChannelMember member : getMembers())
-        {
-            if (member.getName().toLowerCase().equals(searchName))
-            {
-                return member;
-            }
-        }
-        
-        return null;
     }
 }

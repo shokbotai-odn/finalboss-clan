@@ -1,83 +1,65 @@
-/*
- * FinalBoss Clan - Drop Record
- * 
- * WHAT THIS IS (for non-coders):
- * A data container for loot drops. When someone gets a notable drop,
- * the information gets stored in one of these objects.
- */
-
 package com.finalboss.runelite.model;
 
 import lombok.Data;
-import java.util.Date;
 
 /**
- * Represents a logged drop from the database.
- * 
- * Matches the 'drops' table structure.
+ * Data model representing a notable loot drop.
+ *
+ * Maps to the 'drops' table in Supabase:
+ * - rsn: Player's RuneScape name who received the drop
+ * - item_id: OSRS item ID (used for wiki lookup/icons)
+ * - item_name: Display name of the item
+ * - quantity: Number of items received
+ * - value: Total value in GP (quantity * price)
+ * - source: Where the drop came from (boss name, activity, etc.)
+ *
+ * Field naming uses snake_case to match Supabase/PostgreSQL conventions
+ * for direct Gson serialization. The created_at timestamp is auto-generated
+ * by Supabase on insert.
+ *
+ * Flow: DropService -> ApiClient.logDrop() -> Supabase -> Discord Bot announcement
+ *
+ * @see DropService#processItem(ItemStack, String) for creation
+ * @see ApiClient#logDrop(DropRecord) for submission
  */
 @Data
 public class DropRecord
 {
-    /** Database ID */
-    private String id;
-    
-    /** Reference to the user who got the drop */
-    private String user_id;
-    
-    /** The player's RSN at time of drop */
+    /** Player's RuneScape name who received the drop */
     private String rsn;
-    
-    /** OSRS item ID */
+
+    /** OSRS item ID (e.g., 11832 for Bandos Chestplate) */
     private int item_id;
-    
-    /** Item name */
+
+    /** Display name of the item (e.g., "Bandos chestplate") */
     private String item_name;
-    
-    /** Quantity received */
+
+    /** Number of items received (usually 1, but can be more for stackables) */
     private int quantity;
-    
-    /** GP value (can be very large for expensive items) */
+
+    /** Total value in GP (quantity * item price) */
     private long value;
-    
-    /** Where the drop came from (e.g., "Theatre of Blood") */
+
+    /** Source of the drop: boss name, activity, etc. (e.g., "General Graardor") */
     private String source;
-    
-    /** Session ID if part of a group session */
-    private String session_id;
-    
-    /** When the drop was logged */
-    private Date created_at;
-    
+
     /**
-     * Gets a formatted string for the drop value.
-     * 
-     * @return Value formatted with K/M/B suffixes
+     * Creates a new drop record with all required fields.
+     *
+     * @param rsn Player's RuneScape name
+     * @param itemId OSRS item ID
+     * @param itemName Display name of the item
+     * @param quantity Number of items
+     * @param value Total value in GP
+     * @param source Boss/activity name
      */
-    public String getFormattedValue()
+    public DropRecord(String rsn, int itemId, String itemName, int quantity, long value, String source)
     {
-        if (value >= 1_000_000_000)
-        {
-            return String.format("%.2fB", value / 1_000_000_000.0);
-        }
-        else if (value >= 1_000_000)
-        {
-            return String.format("%.2fM", value / 1_000_000.0);
-        }
-        else if (value >= 1_000)
-        {
-            return String.format("%.1fK", value / 1_000.0);
-        }
-        return String.valueOf(value);
-    }
-    
-    /**
-     * Gets total value (value * quantity).
-     * 
-     * @return Total GP value
-     */
-    public long getTotalValue()
-    {
-        return value * quantity;
+        this.rsn = rsn;
+        this.item_id = itemId;
+        this.item_name = itemName;
+        this.quantity = quantity;
+        this.value = value;
+        this.source = source;
     }
 }

@@ -1,13 +1,3 @@
-/*
- * FinalBoss Clan - Configuration
- * 
- * WHAT THIS DOES (for non-coders):
- * This file defines all the settings users can change in RuneLite's config panel.
- * Each setting becomes a UI element (toggle, dropdown, text field, etc.) automatically.
- * 
- * Settings are organized into sections for easier navigation.
- */
-
 package com.finalboss.runelite;
 
 import net.runelite.client.config.Config;
@@ -16,88 +6,44 @@ import net.runelite.client.config.ConfigItem;
 import net.runelite.client.config.ConfigSection;
 
 /**
- * Configuration interface for FinalBoss Clan plugin.
- * 
- * HOW THIS WORKS:
- * - RuneLite reads this interface and generates a settings UI
- * - Values are automatically saved/loaded
- * - Default values are specified in the default methods
+ * Configuration interface for the FinalBoss Clan plugin.
+ *
+ * This plugin comes PRE-CONFIGURED for FinalBoss clan members - no setup required!
+ * Just install and it works out of the box.
+ *
+ * User-configurable settings:
+ * - Status: Activity status sharing options (timeout, sync toggle)
+ * - Drops: Drop logging thresholds and toggles
+ *
+ * Backend settings (WOM group ID, Supabase URL/key) are hardcoded constants
+ * and not exposed in the UI. To fork this plugin for a different clan,
+ * modify the constants in womGroupId(), apiUrl(), and apiKey().
  */
 @ConfigGroup("finalbossclan")
 public interface FinalBossConfig extends Config
 {
-    // =========================================================================
-    // SECTIONS
-    // =========================================================================
-    
-    @ConfigSection(
-        name = "General",
-        description = "General plugin settings",
-        position = 0
-    )
-    String generalSection = "general";
-    
+    // ========== Configuration Sections ==========
+
     @ConfigSection(
         name = "Status",
         description = "Activity status settings",
-        position = 1
+        position = 0
     )
     String statusSection = "status";
-    
+
     @ConfigSection(
         name = "Drops",
         description = "Drop logging settings",
-        position = 2
-    )
-    String dropsSection = "drops";
-    
-    @ConfigSection(
-        name = "Discord",
-        description = "Discord integration settings",
-        position = 3
-    )
-    String discordSection = "discord";
-    
-    @ConfigSection(
-        name = "Advanced",
-        description = "Advanced settings (usually don't need to change)",
-        position = 99,
-        closedByDefault = true
-    )
-    String advancedSection = "advanced";
-    
-    // =========================================================================
-    // GENERAL SETTINGS
-    // =========================================================================
-    
-    @ConfigItem(
-        keyName = "showOfflineMembers",
-        name = "Show Offline Members",
-        description = "Show clan members who are offline (requires backend connection)",
-        section = generalSection,
-        position = 0
-    )
-    default boolean showOfflineMembers()
-    {
-        return false;
-    }
-    
-    @ConfigItem(
-        keyName = "compactMode",
-        name = "Compact Mode",
-        description = "Use a more compact layout for the member list",
-        section = generalSection,
         position = 1
     )
-    default boolean compactMode()
-    {
-        return false;
-    }
-    
-    // =========================================================================
-    // STATUS SETTINGS
-    // =========================================================================
-    
+    String dropsSection = "drops";
+
+    // ========== Status Settings ==========
+
+    /**
+     * Master toggle for status synchronization.
+     * When enabled, your activity status is shared with other clan members.
+     */
     @ConfigItem(
         keyName = "syncStatus",
         name = "Sync Status",
@@ -109,7 +55,12 @@ public interface FinalBossConfig extends Config
     {
         return true;
     }
-    
+
+    /**
+     * Time-to-live for status records in minutes.
+     * After this duration, status auto-expires and is removed from the roster.
+     * Set to 0 to disable expiration (status persists until manually changed).
+     */
     @ConfigItem(
         keyName = "statusTimeout",
         name = "Status Timeout (minutes)",
@@ -121,15 +72,17 @@ public interface FinalBossConfig extends Config
     {
         return 30;
     }
-    
-    // =========================================================================
-    // DROPS SETTINGS
-    // =========================================================================
-    
+
+    // ========== Drop Logging Settings ==========
+
+    /**
+     * Master toggle for drop logging.
+     * When enabled, notable drops are sent to the backend and announced in Discord.
+     */
     @ConfigItem(
         keyName = "logDrops",
         name = "Log Drops",
-        description = "Automatically log notable drops to the backend",
+        description = "Log notable drops to Discord",
         section = dropsSection,
         position = 0
     )
@@ -137,7 +90,13 @@ public interface FinalBossConfig extends Config
     {
         return true;
     }
-    
+
+    /**
+     * Minimum GP value required for a drop to be logged.
+     * Drops below this threshold are silently ignored.
+     * Default: 1,000,000 GP (1M) to capture only significant drops.
+     * Set to 0 to log all drops regardless of value.
+     */
     @ConfigItem(
         keyName = "dropThreshold",
         name = "Drop Value Threshold",
@@ -147,76 +106,61 @@ public interface FinalBossConfig extends Config
     )
     default int dropThreshold()
     {
-        return 1000000; // 1M default
+        return 1000000;
     }
-    
+
+    // ========== Hidden Backend Constants ==========
+    // These are pre-configured for FinalBoss clan and hidden from the UI.
+    // To fork for a different clan, modify these default values.
+
+    /**
+     * Wise Old Man group ID for membership verification.
+     * FinalBoss clan's WOM group: https://wiseoldman.net/groups/1055
+     *
+     * To fork for a different clan, change this to your clan's WOM group ID.
+     */
     @ConfigItem(
-        keyName = "announceDrops",
-        name = "Announce Drops to Discord",
-        description = "Post notable drops to the Discord channel",
-        section = dropsSection,
-        position = 2
+        keyName = "womGroupId",
+        name = "WOM Group ID",
+        description = "Wise Old Man group ID for membership verification",
+        hidden = true
     )
-    default boolean announceDrops()
+    default int womGroupId()
     {
-        return true;
+        return 1055;
     }
-    
-    // =========================================================================
-    // DISCORD SETTINGS
-    // =========================================================================
-    
-    @ConfigItem(
-        keyName = "discordToken",
-        name = "Session Token",
-        description = "Your authentication token (set automatically after Discord login)",
-        section = discordSection,
-        position = 0,
-        secret = true
-    )
-    default String discordToken()
-    {
-        return "";
-    }
-    
-    @ConfigItem(
-        keyName = "allowPings",
-        name = "Allow Pings",
-        description = "Allow other clan members to ping you via Discord DM",
-        section = discordSection,
-        position = 1
-    )
-    default boolean allowPings()
-    {
-        return true;
-    }
-    
-    // =========================================================================
-    // ADVANCED SETTINGS
-    // =========================================================================
-    
+
+    /**
+     * Supabase project URL for backend API communication.
+     * FinalBoss clan's Supabase project URL.
+     *
+     * To fork for a different clan, change this to your Supabase project URL.
+     */
     @ConfigItem(
         keyName = "apiUrl",
         name = "API URL",
-        description = "Backend API URL (leave default unless testing)",
-        section = advancedSection,
-        position = 0
+        description = "Supabase project URL",
+        hidden = true
     )
     default String apiUrl()
     {
-        // TODO: Replace with actual Supabase URL after setup
-        return "https://your-project.supabase.co";
+        return "https://snpfnlvfxpfqryvzksrp.supabase.co";
     }
-    
+
+    /**
+     * Supabase anonymous key for authenticating API requests.
+     * This is the public "anon" key (safe to expose - RLS controls access).
+     *
+     * To fork for a different clan, change this to your Supabase anon key.
+     */
     @ConfigItem(
-        keyName = "debugMode",
-        name = "Debug Mode",
-        description = "Enable verbose logging for troubleshooting",
-        section = advancedSection,
-        position = 1
+        keyName = "apiKey",
+        name = "API Key",
+        description = "Supabase anon key",
+        hidden = true
     )
-    default boolean debugMode()
+    default String apiKey()
     {
-        return false;
+        return "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6InNucGZubHZmeHBmcXJ5dnprc3JwIiwicm9sZSI6ImFub24iLCJpYXQiOjE3Njk5MjQzNTEsImV4cCI6MjA4NTUwMDM1MX0.jxGTGTe__l_7Z-w-ZuuHAGcMyj_9FImRZrV_V5gd40M";
     }
 }

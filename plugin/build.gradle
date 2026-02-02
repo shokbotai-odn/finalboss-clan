@@ -1,9 +1,8 @@
 /*
  * FinalBoss Clan - RuneLite Plugin
- * 
- * Build configuration for Plugin Hub compliance.
- * Target: Java 11 bytecode (RuneLite requirement)
- * Dev: JDK 21 recommended
+ *
+ * Clan roster, status sharing, and drop logging for OSRS clans.
+ * https://github.com/finalboss-clan/runelite-plugin
  */
 
 plugins {
@@ -11,34 +10,42 @@ plugins {
 }
 
 group = 'com.finalboss'
-version = '0.1.0'
+version = '1.0.0'
 
 repositories {
     mavenLocal()
+    maven {
+        url = 'https://repo.runelite.net'
+        content {
+            includeGroupByRegex("net\\.runelite.*")
+        }
+    }
     mavenCentral()
-    // RuneLite repository - required for client API
-    maven { url = 'https://repo.runelite.net' }
 }
 
+def runeLiteVersion = 'latest.release'
+def pluginMainClass = 'com.finalboss.runelite.FinalBossPluginTest'
+
 dependencies {
-    // RuneLite API - use compileOnly so it's not bundled
-    compileOnly group: 'net.runelite', name: 'client', version: '1.10.44'
-    
-    // Annotations
+    // RuneLite core - provided at runtime
+    compileOnly group: 'net.runelite', name: 'client', version: runeLiteVersion
+
+    // Lombok for cleaner code
     compileOnly 'org.projectlombok:lombok:1.18.30'
     annotationProcessor 'org.projectlombok:lombok:1.18.30'
-    
-    // Logging (provided by RuneLite)
-    compileOnly 'org.slf4j:slf4j-api:1.7.36'
-    
-    // HTTP client for Supabase API calls
-    implementation 'com.squareup.okhttp3:okhttp:4.12.0'
-    
-    // JSON parsing
-    implementation 'com.google.code.gson:gson:2.10.1'
-    
+
+    // HTTP client for API calls (OkHttp is already bundled with RuneLite)
+    compileOnly 'com.squareup.okhttp3:okhttp:4.12.0'
+    // Gson is bundled with RuneLite
+    compileOnly 'com.google.code.gson:gson:2.10.1'
+
     // Testing
     testImplementation 'junit:junit:4.13.2'
+    testImplementation group: 'net.runelite', name: 'client', version: runeLiteVersion
+    testImplementation group: 'net.runelite', name: 'jshell', version: runeLiteVersion
+    // Need actual implementation for tests
+    testImplementation 'com.squareup.okhttp3:okhttp:4.12.0'
+    testImplementation 'com.google.code.gson:gson:2.10.1'
 }
 
 java {
@@ -48,18 +55,27 @@ java {
 }
 
 tasks.withType(JavaCompile).configureEach {
-    // CRITICAL: Target Java 11 bytecode for RuneLite compatibility
-    options.release.set(11)
     options.encoding = 'UTF-8'
+    // Target Java 11 for RuneLite compatibility
+    options.release = 11
 }
 
-jar {
-    manifest {
-        attributes(
-            'Plugin-Version': project.version,
-            'Plugin-Id': 'finalboss-clan',
-            'Plugin-Provider': 'Final Boss Clan',
-            'Plugin-Description': 'Clan roster, status sync, drops, and sessions for Final Boss clan'
-        )
-    }
+// Local development task to run RuneLite with the plugin loaded
+tasks.register('run', JavaExec) {
+    classpath = sourceSets.test.runtimeClasspath
+    mainClass = pluginMainClass
+
+    jvmArgs '-ea'
+    jvmArgs '--add-opens=java.desktop/com.apple.eawt=ALL-UNNAMED'
+    jvmArgs '--add-exports=java.desktop/com.apple.eawt=ALL-UNNAMED'
+    jvmArgs '--add-opens=java.desktop/sun.awt=ALL-UNNAMED'
+    jvmArgs '--add-opens=java.base/java.lang=ALL-UNNAMED'
+    jvmArgs '--add-opens=java.base/java.lang.reflect=ALL-UNNAMED'
+    jvmArgs '--add-opens=java.base/java.util=ALL-UNNAMED'
+    jvmArgs '--add-opens=java.base/java.io=ALL-UNNAMED'
+    jvmArgs '--add-opens=java.base/java.net=ALL-UNNAMED'
+    jvmArgs '--add-opens=java.desktop/java.awt=ALL-UNNAMED'
+    jvmArgs '--add-opens=java.desktop/javax.swing=ALL-UNNAMED'
+
+    args '--developer-mode', '--debug'
 }
