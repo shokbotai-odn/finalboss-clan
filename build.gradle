@@ -1,81 +1,87 @@
-/*
- * FinalBoss Clan - RuneLite Plugin
- *
- * Clan roster, status sharing, and drop logging for OSRS clans.
- * https://github.com/finalboss-clan/runelite-plugin
- */
-
 plugins {
-    id 'java'
+	id 'java'
+}
+
+repositories {
+	mavenLocal()
+	maven {
+		url = 'https://repo.runelite.net'
+		content {
+			includeGroupByRegex("net\\.runelite.*")
+		}
+	}
+	mavenCentral()
+}
+
+def runeLiteVersion = 'latest.release'
+def pluginMainClass = 'com.finalboss.runelite.FinalBossPluginTest'
+
+dependencies {
+	compileOnly group: 'net.runelite', name: 'client', version: runeLiteVersion
+
+	compileOnly 'org.projectlombok:lombok:1.18.30'
+	annotationProcessor 'org.projectlombok:lombok:1.18.30'
+
+	// OkHttp and Gson are bundled with RuneLite
+	compileOnly 'com.squareup.okhttp3:okhttp:4.12.0'
+	compileOnly 'com.google.code.gson:gson:2.10.1'
+
+	testImplementation 'junit:junit:4.12'
+	testImplementation group: 'net.runelite', name: 'client', version: runeLiteVersion
+	testImplementation group: 'net.runelite', name: 'jshell', version: runeLiteVersion
+	testImplementation 'com.squareup.okhttp3:okhttp:4.12.0'
+	testImplementation 'com.google.code.gson:gson:2.10.1'
 }
 
 group = 'com.finalboss'
 version = '1.0.0'
 
-repositories {
-    mavenLocal()
-    maven {
-        url = 'https://repo.runelite.net'
-        content {
-            includeGroupByRegex("net\\.runelite.*")
-        }
-    }
-    mavenCentral()
-}
-
-def runeLiteVersion = 'latest.release'
-def pluginMainClass = 'com.finalboss.runelite.FinalBossPlugin'
-
-dependencies {
-    // RuneLite core - provided at runtime
-    compileOnly group: 'net.runelite', name: 'client', version: runeLiteVersion
-
-    // Lombok for cleaner code
-    compileOnly 'org.projectlombok:lombok:1.18.30'
-    annotationProcessor 'org.projectlombok:lombok:1.18.30'
-
-    // HTTP client for API calls (OkHttp is already bundled with RuneLite)
-    compileOnly 'com.squareup.okhttp3:okhttp:4.12.0'
-    // Gson is bundled with RuneLite
-    compileOnly 'com.google.code.gson:gson:2.10.1'
-
-    // Testing
-    testImplementation 'junit:junit:4.13.2'
-    testImplementation group: 'net.runelite', name: 'client', version: runeLiteVersion
-    testImplementation group: 'net.runelite', name: 'jshell', version: runeLiteVersion
-    // Need actual implementation for tests
-    testImplementation 'com.squareup.okhttp3:okhttp:4.12.0'
-    testImplementation 'com.google.code.gson:gson:2.10.1'
-}
-
-java {
-    toolchain {
-        languageVersion = JavaLanguageVersion.of(21)
-    }
-}
-
 tasks.withType(JavaCompile).configureEach {
-    options.encoding = 'UTF-8'
-    // Target Java 11 for RuneLite compatibility
-    options.release = 11
+	options.encoding = 'UTF-8'
+	options.release.set(11)
 }
 
-// Local development task to run RuneLite with the plugin loaded
 tasks.register('run', JavaExec) {
-    classpath = sourceSets.test.runtimeClasspath
-    mainClass = pluginMainClass
+	classpath = sourceSets.test.runtimeClasspath
+	mainClass = pluginMainClass
 
-    jvmArgs '-ea'
-    jvmArgs '--add-opens=java.desktop/com.apple.eawt=ALL-UNNAMED'
-    jvmArgs '--add-exports=java.desktop/com.apple.eawt=ALL-UNNAMED'
-    jvmArgs '--add-opens=java.desktop/sun.awt=ALL-UNNAMED'
-    jvmArgs '--add-opens=java.base/java.lang=ALL-UNNAMED'
-    jvmArgs '--add-opens=java.base/java.lang.reflect=ALL-UNNAMED'
-    jvmArgs '--add-opens=java.base/java.util=ALL-UNNAMED'
-    jvmArgs '--add-opens=java.base/java.io=ALL-UNNAMED'
-    jvmArgs '--add-opens=java.base/java.net=ALL-UNNAMED'
-    jvmArgs '--add-opens=java.desktop/java.awt=ALL-UNNAMED'
-    jvmArgs '--add-opens=java.desktop/javax.swing=ALL-UNNAMED'
+	jvmArgs '-ea'
+	jvmArgs '--add-opens=java.desktop/com.apple.eawt=ALL-UNNAMED'
+	jvmArgs '--add-exports=java.desktop/com.apple.eawt=ALL-UNNAMED'
+	jvmArgs '--add-opens=java.desktop/sun.awt=ALL-UNNAMED'
+	jvmArgs '--add-opens=java.base/java.lang=ALL-UNNAMED'
+	jvmArgs '--add-opens=java.base/java.lang.reflect=ALL-UNNAMED'
+	jvmArgs '--add-opens=java.base/java.util=ALL-UNNAMED'
+	jvmArgs '--add-opens=java.base/java.io=ALL-UNNAMED'
+	jvmArgs '--add-opens=java.base/java.net=ALL-UNNAMED'
+	jvmArgs '--add-opens=java.desktop/java.awt=ALL-UNNAMED'
+	jvmArgs '--add-opens=java.desktop/javax.swing=ALL-UNNAMED'
 
-    args '--developer-mode', '--debug'
+	args "--developer-mode", "--debug"
+}
+
+tasks.register('shadowJar', Jar) {
+	dependsOn configurations.testRuntimeClasspath
+	manifest {
+		attributes('Main-Class': pluginMainClass, 'Multi-Release': true)
+	}
+
+	duplicatesStrategy = DuplicatesStrategy.EXCLUDE
+	from sourceSets.main.output
+	from sourceSets.test.output
+	from {
+		configurations.testRuntimeClasspath.collect { file ->
+			file.isDirectory() ? file : zipTree(file)
+		}
+	}
+
+	exclude 'META-INF/INDEX.LIST'
+	exclude 'META-INF/*.SF'
+	exclude 'META-INF/*.DSA'
+	exclude 'META-INF/*.RSA'
+	exclude '**/module-info.class'
+
+	group = BasePlugin.BUILD_GROUP
+	archiveClassifier.set('shadow')
+	archiveFileName.set("${rootProject.name}-${project.version}-all.jar")
 }
