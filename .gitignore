@@ -48,3 +48,14 @@ Thumbs.db
 **/secrets/
 *.pem
 *.key
+
+# Gradle build files
+.gradle/
+build/
+
+# Environment files
+.env
+.env.local
+
+# Archive (project management files)
+archive/
